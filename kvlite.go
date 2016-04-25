@@ -154,7 +154,7 @@ func (s *Store) Get(table string, key string, output interface{}) (found bool, e
 	err = chkTable(&table, _reserved)
 	if err != nil { return false, err }
 	
-	err = s.dbCon.QueryRow("SELECT value FROM "+table+" WHERE key COLLATE nocase = ?", key).Scan(&data)
+	err = s.dbCon.QueryRow("SELECT value FROM '"+table+"' WHERE key COLLATE nocase = ?", key).Scan(&data)
 
 	switch {
 	case err == sql.ErrNoRows:
@@ -216,12 +216,44 @@ func (s *Store) ListTables(filter string) (cList []string, err error) {
 	return
 }
 
-// Return a count of all keys in specified table.
-func (s *Store) CountKeys(table, filter string) (count int, err error) {
-	keys, err := s.ListKeys(table, filter)
-	if err != nil { return -1, err }
-	return len(keys), nil
+// List all keys in table, only those matching filter if specified.
+func (s *Store) CountKeys(table string, filter string) (count uint32, err error) {
+	
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	var rows *sql.Rows
+	
+	err = chkTable(&table, _reserved)
+	if err != nil { return 0, err }
+	
+	if filter != "" {
+		rows, err = s.dbCon.Query("SELECT COUNT(key) FROM '" + table + "' where key like ?;", filter)
+	} else {
+		rows, err = s.dbCon.Query("SELECT COUNT(key) FROM '" + table + "';")
+	}
+
+	// Prevent table does not exist errors.
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") == true {
+			return 0, nil
+		} else {
+			return 0, err
+		}
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		err = rows.Scan(&count)
+		if err != nil { return 0, err }
+	}
+	err = rows.Err()
+	if err != nil { return 0, err }
+
+	return
 }
+
 
 // List all keys in table, only those matching filter if specified.
 func (s *Store) ListKeys(table string, filter string) (keyList []string, err error) {
@@ -235,9 +267,9 @@ func (s *Store) ListKeys(table string, filter string) (keyList []string, err err
 	if err != nil { return nil, err }
 	
 	if filter != "" {
-		rows, err = s.dbCon.Query("SELECT key FROM " + table + " where key like ?;", filter)
+		rows, err = s.dbCon.Query("SELECT key FROM '" + table + "' where key like ?;", filter)
 	} else {
-		rows, err = s.dbCon.Query("SELECT key FROM " + table + ";")
+		rows, err = s.dbCon.Query("SELECT key FROM '" + table + "';")
 	}
 
 	// Prevent table does not exist errors.
