@@ -56,7 +56,7 @@ func encrypt(input []byte, key []byte) []byte {
 
 	cipher.NewCFBEncrypter(block, key[0:block.BlockSize()]).XORKeyStream(buff, buff)
 
-	return []byte(base64.StdEncoding.EncodeToString(buff))
+	return []byte(base64.RawStdEncoding.EncodeToString(buff))
 }
 
 func decrypt(input []byte, key []byte) (decoded []byte) {
@@ -65,7 +65,7 @@ func decrypt(input []byte, key []byte) (decoded []byte) {
 
 	key = hashBytes(key)
 
-	decoded, _ = base64.StdEncoding.DecodeString(string(input))
+	decoded, _ = base64.RawStdEncoding.DecodeString(string(input))
 	block, _ = aes.NewCipher(key)
 	cipher.NewCFBDecrypter(block, key[0:block.BlockSize()]).XORKeyStream(decoded, decoded)
 

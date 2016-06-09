@@ -2,9 +2,10 @@
 package kvlite
 
 import (
+	"encoding/base64"
 	"github.com/mattn/go-sqlite3"
 	"database/sql"
-	"encoding/gob"
+	"encoding/json"
 	"bytes"
 	"fmt"
 	"strings"
@@ -15,7 +16,7 @@ type Store struct {
 		key		[]byte
 		filePath	string
 		mutex		sync.RWMutex
-		encoder		*gob.Encoder
+		encoder		*json.Encoder
 		buffer		*bytes.Buffer
 		dbCon		*sql.DB
 }
@@ -92,10 +93,13 @@ func (s *Store) set(table string, key string, val interface{}, flags int) (err e
 		eFlag = 1
 	}
 
+
+
 	_, err = s.dbCon.Exec("CREATE TABLE IF NOT EXISTS '" + table + "' (key TEXT PRIMARY KEY, value BLOB, e int)")
 	if err != nil { return err }
 	
 	s.dbCon.Exec("DELETE FROM '" + table + "' WHERE key COLLATE nocase = ?;", key);
+	if eFlag == 0 { encBytes = []byte(base64.RawStdEncoding.EncodeToString(encBytes)) }
 	_, err = s.dbCon.Exec("INSERT OR REPLACE INTO '"+table+"'(key,value,e) VALUES(?, ?, ?);", key, encBytes, eFlag)
 	if err != nil { return err }
 
@@ -158,7 +162,7 @@ func (s *Store) Get(table string, key string, output interface{}) (found bool, e
 
 	switch {
 	case err == sql.ErrNoRows:
-		return false, err
+		return false, nil
 	case err != nil:
 		if strings.Contains(err.Error(), "no such table") == true {
 			return false, nil
@@ -166,15 +170,21 @@ func (s *Store) Get(table string, key string, output interface{}) (found bool, e
 	default:
 		err = s.dbCon.QueryRow("SELECT e FROM '"+table+"' WHERE key COLLATE nocase = ?;", key).Scan(&eFlag)
 		if err != nil { return false, err }
-		if eFlag != 0 { data = decrypt(data, s.key) }
+
+		if eFlag != 0 { 
+			data = decrypt(data, s.key) 
+		} else {
+			data, _ = base64.RawStdEncoding.DecodeString(string(data))
+		}
 	}
 	
 	switch o := output.(type) {
 		case *[]byte:
 			*o = append(*o, data[0:]...)
 		default:
-			var dec *gob.Decoder
-			dec = gob.NewDecoder(bytes.NewReader(data))
+			if output == nil { return true, nil }
+			var dec *json.Decoder
+			dec = json.NewDecoder(bytes.NewReader(data))
 			if dec != nil { return true, dec.Decode(output) } 
 	}
 	
@@ -338,7 +348,7 @@ func open(filePath string, padlock []byte, flags int) (openStore *Store, err err
 		dbCon:		dbCon,
 		filePath:	filePath,
 		buffer: 	&buff,
-		encoder: gob.NewEncoder(&buff),
+		encoder: json.NewEncoder(&buff),
 	}
 
 	if err = dbCon.Ping(); err != nil { 
