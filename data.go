@@ -2,11 +2,11 @@ package kvlite
 
 import (
 	"crypto/aes"
-	"crypto/sha256"
-	"crypto/rand"
-	"math/big"
 	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"math/big"
 )
 
 // Perform sha256.Sum256 against input byte string.
@@ -20,7 +20,9 @@ func hashBytes(input []byte) []byte {
 // Generates a random byte slice of length specified.
 func randBytes(sz int) []byte {
 
-	if sz <= 0 { sz = 16 }
+	if sz <= 0 {
+		sz = 16
+	}
 
 	ch := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/="
 	chlen := len(ch)
@@ -47,7 +49,7 @@ func encrypt(input []byte, key []byte) []byte {
 	var (
 		block cipher.Block
 	)
-	
+
 	key = hashBytes(key)
 	block, _ = aes.NewCipher(key)
 
