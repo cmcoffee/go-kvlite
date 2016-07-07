@@ -19,7 +19,6 @@ func hashBytes(input []byte) []byte {
 
 // Generates a random byte slice of length specified.
 func randBytes(sz int) []byte {
-
 	if sz <= 0 {
 		sz = 16
 	}

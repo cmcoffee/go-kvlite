@@ -7,6 +7,13 @@ Package 'kvlite' provides a Key Value interface upon SQLite.
 
 
 
+## Constants
+``` go
+const (
+    RESERVED = "KVLite"
+    NONE     = ""
+)
+```
 
 ## Variables
 ``` go
@@ -56,9 +63,16 @@ type Store struct {
 
 ### func FastOpen
 ``` go
-func FastOpen(input ...string) (*Store, error)
+func FastOpen(filePath string, key string) (*Store, error)
 ```
-Open Database without auto-generated encryption key, can either specify key or use random key.
+Open Database without auto-generated encryption key, instead specify key, if no key specific will be random.
+
+
+### func MemStore
+``` go
+func MemStore() (*Store, error)
+```
+Open Memory-Only Database with random key.
 
 
 ### func Open
@@ -80,7 +94,7 @@ Close Store.
 
 ### func (\*Store) CountKeys
 ``` go
-func (s *Store) CountKeys(table string, filter string) (count uint32, err error)
+func (s *Store) CountKeys(table string, filters ...string) (count uint32, err error)
 ```
 List all keys in table, only those matching filter if specified.
 
@@ -94,9 +108,17 @@ Manually override encryption key used with CryptSet.
 
 
 
+### func (\*Store) CryptReset
+``` go
+func (s *Store) CryptReset() error
+```
+Truncates the KVLite table to reset the encryption keys for database.
+
+
+
 ### func (\*Store) CryptSet
 ``` go
-func (s *Store) CryptSet(table, key string, val interface{}) (err error)
+func (s *Store) CryptSet(table string, key interface{}, val interface{}) (err error)
 ```
 Writes encrypted value to Store datastore.
 
@@ -104,7 +126,7 @@ Writes encrypted value to Store datastore.
 
 ### func (\*Store) Get
 ``` go
-func (s *Store) Get(table string, key string, output interface{}) (found bool, err error)
+func (s *Store) Get(table string, key interface{}, output interface{}) (found bool, err error)
 ```
 Retreive a value at key in table specified.
 
@@ -112,7 +134,7 @@ Retreive a value at key in table specified.
 
 ### func (\*Store) ListKeys
 ``` go
-func (s *Store) ListKeys(table string, filter string) (keyList []string, err error)
+func (s *Store) ListKeys(table string, filters ...string) (keyList []string, err error)
 ```
 List all keys in table, only those matching filter if specified.
 
@@ -120,7 +142,7 @@ List all keys in table, only those matching filter if specified.
 
 ### func (\*Store) ListTables
 ``` go
-func (s *Store) ListTables(filter string) (cList []string, err error)
+func (s *Store) ListTables(filters ...string) (cList []string, err error)
 ```
 List all tables, if filter specified only tables that match filter.
 
@@ -128,7 +150,7 @@ List all tables, if filter specified only tables that match filter.
 
 ### func (\*Store) Set
 ``` go
-func (s *Store) Set(table string, key string, val interface{}) (err error)
+func (s *Store) Set(table string, key interface{}, val interface{}) (err error)
 ```
 Stores value in Store datastore.
 
@@ -136,7 +158,7 @@ Stores value in Store datastore.
 
 ### func (\*Store) Truncate
 ``` go
-func (s *Store) Truncate(table string) error
+func (s *Store) Truncate(table string) (err error)
 ```
 Truncates a table in Store datastore.
 
@@ -144,7 +166,7 @@ Truncates a table in Store datastore.
 
 ### func (\*Store) Unset
 ``` go
-func (s *Store) Unset(table string, key string) error
+func (s *Store) Unset(table string, key interface{}) error
 ```
 Unset/remove key in table specified.
 

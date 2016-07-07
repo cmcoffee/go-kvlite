@@ -83,7 +83,7 @@ func Unlock(filepath, passphrase string) (err error) {
 func (s *Store) dblocker(passphrase, key, padlock []byte) []byte {
 
 	// Truncate Existing Stor if one exists.
-	s.truncate("KVLite", _reserved)
+	s.Truncate("KVLite")
 
 	// Set passphrase and/or key to random if not specified.
 	if passphrase == nil {
@@ -200,7 +200,7 @@ func (s *Store) dbunlocker(padlock []byte) (err error) {
 	count := len(slots)
 
 	if count == 0 {
-		s.key = s.dblocker(nil, nil, nil)
+		s.key = s.dblocker(nil, nil, padlock)
 		return
 	}
 

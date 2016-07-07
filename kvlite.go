@@ -22,6 +22,11 @@ type Store struct {
 }
 
 const (
+	RESERVED = "KVLite"
+	NONE     = ""
+)
+
+const (
 	_none = (1 << iota)
 	_encrypt
 	_sort
@@ -49,24 +54,24 @@ func chkTable(table *string, flags int) (err error) {
 	if flags&_reserved > 0 {
 		return
 	}
-	if *table == "KVLite" {
+	if *table == RESERVED {
 		return fmt.Errorf("Sorry, %s is a reserved name.", *table)
 	}
 	return
 }
 
 // Stores value in Store datastore.
-func (s *Store) Set(table string, key string, val interface{}) (err error) {
+func (s *Store) Set(table string, key interface{}, val interface{}) (err error) {
 	return s.set(table, key, val, 0)
 }
 
 // Writes encrypted value to Store datastore.
-func (s *Store) CryptSet(table, key string, val interface{}) (err error) {
+func (s *Store) CryptSet(table string, key interface{}, val interface{}) (err error) {
 	return s.set(table, key, val, _encrypt)
 }
 
 // Internal function to write to SQLite.
-func (s *Store) set(table string, key string, val interface{}, flags int) (err error) {
+func (s *Store) set(table string, key interface{}, val interface{}, flags int) (err error) {
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -99,7 +104,15 @@ func (s *Store) set(table string, key string, val interface{}, flags int) (err e
 		eFlag = 1
 	}
 
-	_, err = s.dbCon.Exec("CREATE TABLE IF NOT EXISTS '" + table + "' (key TEXT PRIMARY KEY, value BLOB, e int)")
+	var new_table string
+
+	switch key.(type) {
+	case int:
+		new_table = "key int PRIMARY KEY, value BLOB, e int"
+	case string:
+		new_table = "key TEXT PRIMARY KEY, value BLOB, e int"
+	}
+	_, err = s.dbCon.Exec("CREATE TABLE IF NOT EXISTS '" + table + "' (" + new_table + ");")
 	if err != nil {
 		return err
 	}
@@ -117,11 +130,11 @@ func (s *Store) set(table string, key string, val interface{}, flags int) (err e
 }
 
 // Unset/remove key in table specified.
-func (s *Store) Unset(table string, key string) error {
+func (s *Store) Unset(table string, key interface{}) error {
 	return s.unset(table, key, 0)
 }
 
-func (s *Store) unset(table string, key string, flags int) (err error) {
+func (s *Store) unset(table string, key interface{}, flags int) (err error) {
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -142,30 +155,42 @@ func (s *Store) unset(table string, key string, flags int) (err error) {
 	return
 }
 
-// Truncates a table in Store datastore.
-func (s *Store) Truncate(table string) error {
-	return s.truncate(table, 0)
-}
-
-func (s *Store) truncate(table string, flags int) (err error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	err = chkTable(&table, flags)
+// Truncates the KVLite table to reset the encryption keys for database.
+func (s *Store) CryptReset() error {
+	// Truncate KVLite table.
+	err := s.Truncate(RESERVED)
+	if err != nil {
+		return err
+	}
+	tables, err := s.ListTables()
 	if err != nil {
 		return err
 	}
 
-	if _, err := s.dbCon.Exec("DROP TABLE '" + table + "';"); err != nil {
-		if strings.Contains(err.Error(), "no such table") == true {
+	// Erase any encrypted entries.
+	for _, table := range tables {
+		if _, err := s.dbCon.Exec("DELETE FROM '"+table+"' WHERE e = ?;", 1); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// Truncates a table in Store datastore.
+func (s *Store) Truncate(table string) (err error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if _, err = s.dbCon.Exec("DROP TABLE '" + table + "';"); err != nil {
+		if strings.Contains(err.Error(), "no such table") == true {
+			return nil
+		}
+	}
+	return
+}
+
 // Retreive a value at key in table specified.
-func (s *Store) Get(table string, key string, output interface{}) (found bool, err error) {
+func (s *Store) Get(table string, key interface{}, output interface{}) (found bool, err error) {
 
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -220,134 +245,156 @@ func (s *Store) Get(table string, key string, output interface{}) (found bool, e
 }
 
 // List all tables, if filter specified only tables that match filter.
-func (s *Store) ListTables(filter string) (cList []string, err error) {
+func (s *Store) ListTables(filters ...string) (cList []string, err error) {
 
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	var rows *sql.Rows
-
-	if filter == "" {
-		rows, err = s.dbCon.Query("SELECT name FROM sqlite_master WHERE type='table';")
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		rows, err = s.dbCon.Query("SELECT name FROM sqlite_master WHERE type='table' and name like ?;", filter)
-		if err != nil {
-			return nil, err
-		}
+	if len(filters) == 0 {
+		filters = append(filters, NONE)
 	}
 
-	defer rows.Close()
+	for _, filter := range filters {
 
-	for rows.Next() {
-		var table string
-		err = rows.Scan(&table)
+		var rows *sql.Rows
+
+		if filter == NONE {
+			rows, err = s.dbCon.Query("SELECT name FROM sqlite_master WHERE type='table';")
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			rows, err = s.dbCon.Query("SELECT name FROM sqlite_master WHERE type='table' and name like ?;", filter)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		defer rows.Close()
+
+		for rows.Next() {
+			var table string
+			err = rows.Scan(&table)
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+
+			if table != RESERVED {
+				cList = append(cList, table)
+			}
+		}
+
+		err = rows.Err()
 		if err != nil {
+			rows.Close()
 			return nil, err
 		}
-
-		if table != "KVLite" {
-			cList = append(cList, table)
-		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return nil, err
+		rows.Close()
 	}
 
 	return
 }
 
 // List all keys in table, only those matching filter if specified.
-func (s *Store) CountKeys(table string, filter string) (count uint32, err error) {
+func (s *Store) CountKeys(table string, filters ...string) (count uint32, err error) {
 
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	var rows *sql.Rows
-
-	err = chkTable(&table, _reserved)
-	if err != nil {
-		return 0, err
+	if len(filters) == 0 {
+		filters = append(filters, NONE)
 	}
 
-	if filter != "" {
-		rows, err = s.dbCon.Query("SELECT COUNT(key) FROM '"+table+"' where key like ?;", filter)
-	} else {
-		rows, err = s.dbCon.Query("SELECT COUNT(key) FROM '" + table + "';")
-	}
+	for _, filter := range filters {
+		var rows *sql.Rows
 
-	// Prevent table does not exist errors.
-	if err != nil {
-		if strings.Contains(err.Error(), "no such table") == true {
-			return 0, nil
-		} else {
-			return 0, err
-		}
-	}
-
-	defer rows.Close()
-
-	for rows.Next() {
-		err = rows.Scan(&count)
+		err = chkTable(&table, _reserved)
 		if err != nil {
 			return 0, err
 		}
-	}
-	err = rows.Err()
-	if err != nil {
-		return 0, err
-	}
 
+		if filter != NONE {
+			rows, err = s.dbCon.Query("SELECT COUNT(key) FROM '"+table+"' where key like ?;", filter)
+		} else {
+			rows, err = s.dbCon.Query("SELECT COUNT(key) FROM '" + table + "';")
+		}
+
+		// Prevent table does not exist errors.
+		if err != nil {
+			if strings.Contains(err.Error(), "no such table") == true {
+				return 0, nil
+			} else {
+				return 0, err
+			}
+		}
+
+		for rows.Next() {
+			err = rows.Scan(&count)
+			if err != nil {
+				rows.Close()
+				return 0, err
+			}
+		}
+		err = rows.Err()
+		if err != nil {
+			rows.Close()
+			return 0, err
+		}
+		rows.Close()
+	}
 	return
 }
 
 // List all keys in table, only those matching filter if specified.
-func (s *Store) ListKeys(table string, filter string) (keyList []string, err error) {
+func (s *Store) ListKeys(table string, filters ...string) (keyList []string, err error) {
 
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	var rows *sql.Rows
-
-	err = chkTable(&table, _reserved)
-	if err != nil {
-		return nil, err
+	if len(filters) == 0 {
+		filters = append(filters, NONE)
 	}
 
-	if filter != "" {
-		rows, err = s.dbCon.Query("SELECT key FROM '"+table+"' where key like ?;", filter)
-	} else {
-		rows, err = s.dbCon.Query("SELECT key FROM '" + table + "';")
-	}
+	for _, filter := range filters {
+		var rows *sql.Rows
 
-	// Prevent table does not exist errors.
-	if err != nil {
-		if strings.Contains(err.Error(), "no such table") == true {
-			return nil, nil
-		} else {
-			return nil, err
-		}
-	}
-
-	defer rows.Close()
-
-	for rows.Next() {
-		var key string
-		err = rows.Scan(&key)
+		err = chkTable(&table, _reserved)
 		if err != nil {
 			return nil, err
 		}
-		keyList = append(keyList, key)
-	}
-	err = rows.Err()
-	if err != nil {
-		return nil, err
-	}
 
+		if filter != NONE {
+			rows, err = s.dbCon.Query("SELECT key FROM '"+table+"' where key like ?;", filter)
+		} else {
+			rows, err = s.dbCon.Query("SELECT key FROM '" + table + "';")
+		}
+
+		// Prevent table does not exist errors.
+		if err != nil {
+			if strings.Contains(err.Error(), "no such table") == true {
+				return nil, nil
+			} else {
+				return nil, err
+			}
+		}
+
+		for rows.Next() {
+			var key string
+			err = rows.Scan(&key)
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+			keyList = append(keyList, key)
+		}
+		err = rows.Err()
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
 	return
 }
 
@@ -371,7 +418,7 @@ func init() {
 
 // Open or Creates a new *Store will use auto-created encryption key.
 func Open(filePath string, padlock ...[]byte) (*Store, error) {
-	if filePath == "" {
+	if filePath == NONE {
 		return nil, fmt.Errorf("kvlite: Missing filename parameter.")
 	}
 	if len(padlock) == 0 {
@@ -388,21 +435,19 @@ func Open(filePath string, padlock ...[]byte) (*Store, error) {
 	}
 }
 
-// Open Database without auto-generated encryption key, can either specify key or use random key.
-func FastOpen(input ...string) (*Store, error) {
+// Open Memory-Only Database with random key.
+func MemStore() (*Store, error) {
+	return FastOpen(":memory:", NONE)
+}
 
-	filepath := ":memory:"
-	key := string(randBytes(32))
+// Open Database without auto-generated encryption key, instead specify key, if no key specific will be random.
+func FastOpen(filePath string, key string) (*Store, error) {
 
-	iLen := len(input)
-	if iLen == 1 {
-		filepath = input[0]
-	} else if iLen == 2 {
-		filepath = input[0]
-		key = input[1]
+	if key == NONE {
+		key = string(randBytes(32))
 	}
 
-	db, err := open(filepath, nil, _reserved)
+	db, err := open(filePath, nil, _reserved)
 	if err != nil {
 		return nil, err
 	}
@@ -411,6 +456,7 @@ func FastOpen(input ...string) (*Store, error) {
 }
 
 func open(filePath string, padlock []byte, flags int) (openStore *Store, err error) {
+
 	dbCon, err := sql.Open(_Store_DRIVER, filePath)
 	if err != nil {
 		return nil, err
@@ -431,9 +477,22 @@ func open(filePath string, padlock []byte, flags int) (openStore *Store, err err
 		return nil, err
 	}
 
-	_, err = dbCon.Exec("PRAGMA case_sensitive_like=OFF;")
-	if err != nil {
-		dbCon.Close()
+	setPragma := func(input ...string) (err error) {
+		for _, val := range input {
+			_, err = dbCon.Exec(fmt.Sprintf("PRAGMA %s;", val))
+			if err != nil {
+				return err
+			}
+		}
+		return
+	}
+
+	if err := setPragma("case_sensitive_like=OFF",
+		"encoding='UTF-8'",
+		"synchronous=NORMAL",
+		"auto_vacuum=FULL",
+		"journal_mode=DELETE",
+	); err != nil {
 		return nil, err
 	}
 
