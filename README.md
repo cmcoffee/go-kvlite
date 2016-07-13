@@ -132,6 +132,14 @@ Retreive a value at key in table specified.
 
 
 
+### func (\*Store) ListIKeys
+``` go
+func (s *Store) ListIKeys(table string, filters ...string) (keyList []int, err error)
+```
+List all integer keys in table, matching filter if specified.
+
+
+
 ### func (\*Store) ListKeys
 ``` go
 func (s *Store) ListKeys(table string, filters ...string) (keyList []string, err error)

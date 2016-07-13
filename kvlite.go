@@ -10,6 +10,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"strings"
 	"sync"
+	"strconv"
 )
 
 type Store struct {
@@ -244,6 +245,14 @@ func (s *Store) Get(table string, key interface{}, output interface{}) (found bo
 	return true, nil
 }
 
+// Uses VACUUM command to shrink sqlite database.
+func (s *Store) Shrink() (err error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	_, err = s.dbCon.Exec("VACUUM;")
+	return err
+}
+
 // List all tables, if filter specified only tables that match filter.
 func (s *Store) ListTables(filters ...string) (cList []string, err error) {
 
@@ -342,6 +351,18 @@ func (s *Store) CountKeys(table string, filters ...string) (count uint32, err er
 			return 0, err
 		}
 		rows.Close()
+	}
+	return
+}
+
+// List all integer keys in table, matching filter if specified.
+func (s *Store) ListIKeys(table string, filters ...string) (keyList []int, err error) {
+	var keys []string
+	keys, err = s.ListKeys(table, filters...)
+	for _, k := range keys {
+		i, err := strconv.Atoi(k)
+		if err != nil { return nil, err }
+		keyList = append(keyList, i)
 	}
 	return
 }
@@ -490,8 +511,8 @@ func open(filePath string, padlock []byte, flags int) (openStore *Store, err err
 	if err := setPragma("case_sensitive_like=OFF",
 		"encoding='UTF-8'",
 		"synchronous=NORMAL",
-		"auto_vacuum=FULL",
 		"journal_mode=DELETE",
+		"locking_mode=EXCLUSIVE",
 	); err != nil {
 		return nil, err
 	}
