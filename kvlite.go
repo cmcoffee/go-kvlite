@@ -512,7 +512,6 @@ func open(filePath string, padlock []byte, flags int) (openStore *Store, err err
 		"encoding='UTF-8'",
 		"synchronous=NORMAL",
 		"journal_mode=DELETE",
-		"locking_mode=EXCLUSIVE",
 	); err != nil {
 		return nil, err
 	}
