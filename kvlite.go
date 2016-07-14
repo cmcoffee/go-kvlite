@@ -355,8 +355,8 @@ func (s *Store) CountKeys(table string, filters ...string) (count uint32, err er
 	return
 }
 
-// List all integer keys in table, matching filter if specified.
-func (s *Store) ListIKeys(table string, filters ...string) (keyList []int, err error) {
+// List all numeric keys in table, matching filter if specified.
+func (s *Store) ListNKeys(table string, filters ...string) (keyList []int, err error) {
 	var keys []string
 	keys, err = s.ListKeys(table, filters...)
 	for _, k := range keys {
