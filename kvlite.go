@@ -108,21 +108,25 @@ func (s *Store) set(table string, key interface{}, val interface{}, flags int) (
 	var new_table string
 
 	switch key.(type) {
-	case int:
-		new_table = "key int PRIMARY KEY, value BLOB, e int"
-	case string:
-		new_table = "key TEXT PRIMARY KEY, value BLOB, e int"
+		case int:
+			new_table = "key int PRIMARY KEY, value BLOB, e int"
+		default:
+			new_table = "key TEXT PRIMARY KEY, value BLOB, e int"
 	}
+
+	key_str := fmt.Sprintf("%v", key)
+
 	_, err = s.dbCon.Exec("CREATE TABLE IF NOT EXISTS '" + table + "' (" + new_table + ");")
 	if err != nil {
 		return err
 	}
 
-	s.dbCon.Exec("DELETE FROM '"+table+"' WHERE key COLLATE nocase = ?;", key)
+	s.dbCon.Exec("DELETE FROM '"+table+"' WHERE key COLLATE nocase = ?;", key_str)
 	if eFlag == 0 {
 		encBytes = []byte(base64.RawStdEncoding.EncodeToString(encBytes))
 	}
-	_, err = s.dbCon.Exec("INSERT OR REPLACE INTO '"+table+"'(key,value,e) VALUES(?, ?, ?);", key, encBytes, eFlag)
+
+	_, err = s.dbCon.Exec("INSERT OR REPLACE INTO '"+table+"'(key,value,e) VALUES(?, ?, ?);", key_str, encBytes, eFlag)
 	if err != nil {
 		return err
 	}
@@ -145,7 +149,9 @@ func (s *Store) unset(table string, key interface{}, flags int) (err error) {
 		return err
 	}
 
-	if _, err := s.dbCon.Exec("DELETE FROM '"+table+"' WHERE key COLLATE nocase = ?;", key); err != nil {
+	key_str := fmt.Sprintf("%v", key)
+
+	if _, err := s.dbCon.Exec("DELETE FROM '"+table+"' WHERE key COLLATE nocase = ?;", key_str); err != nil {
 		if strings.Contains(err.Error(), "no such table") == true {
 			return nil
 		}
@@ -190,6 +196,12 @@ func (s *Store) Truncate(table string) (err error) {
 	return
 }
 
+// Retrieves a value as string at key in table specified.
+func (s *Store) SGet(table string, key interface{}) (output string) {
+	s.Get(table, key, &output)
+	return output
+}
+
 // Retreive a value at key in table specified.
 func (s *Store) Get(table string, key interface{}, output interface{}) (found bool, err error) {
 
@@ -204,7 +216,9 @@ func (s *Store) Get(table string, key interface{}, output interface{}) (found bo
 		return false, err
 	}
 
-	err = s.dbCon.QueryRow("SELECT value FROM '"+table+"' WHERE key COLLATE nocase = ?", key).Scan(&data)
+	key_str := fmt.Sprintf("%v", key)
+
+	err = s.dbCon.QueryRow("SELECT value FROM '"+table+"' WHERE key COLLATE nocase = ?", key_str).Scan(&data)
 
 	switch {
 	case err == sql.ErrNoRows:
@@ -216,7 +230,7 @@ func (s *Store) Get(table string, key interface{}, output interface{}) (found bo
 			return false, err
 		}
 	default:
-		err = s.dbCon.QueryRow("SELECT e FROM '"+table+"' WHERE key COLLATE nocase = ?;", key).Scan(&eFlag)
+		err = s.dbCon.QueryRow("SELECT e FROM '"+table+"' WHERE key COLLATE nocase = ?;", key_str).Scan(&eFlag)
 		if err != nil {
 			return false, err
 		}
