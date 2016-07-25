@@ -158,7 +158,7 @@ func (s *Store) dblocker(passphrase, key, padlock []byte) []byte {
 
 	encryptedKey1 := encrypt(randKey, passphrase[0:32])
 	encryptedKey2 := encrypt(key, randKey[0:32])
-	encryptedKey3 := encrypt(key, key[0:32])
+	encryptedKey3 := encrypt(key, append(key[32:], randKey[0:32]...))
 
 	//filler := slotSize - len(encryptedKey1)
 
@@ -219,11 +219,17 @@ func (s *Store) dbunlocker(padlock []byte) (err error) {
 	vRKey := s.unscram(XMsg[xSlots+1])
 	vKey := s.unscram(XMsg[xSlots])
 
+	// tryKey, try new method first, fall back to old method.
 	tryKey := func(rkey []byte) []byte {
 		decrypted := decrypt(vRKey, rkey)
-		key1 := decrypt(vKey, decrypted[0:32])
+		key1 := decrypt(vKey, append(decrypted[32:], rkey...))
 		if bytes.Compare(key1[0:32], decrypted[0:32]) == 0 {
 			return key1
+		} else {
+			key1 = decrypt(vKey, decrypted[0:32])
+			if bytes.Compare(key1[0:32], decrypted[0:32]) == 0 {
+				return key1
+			}
 		}
 		return nil
 	}
