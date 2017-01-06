@@ -55,7 +55,7 @@ func chkTable(table *string, flags int) (err error) {
 	if flags&_reserved > 0 {
 		return
 	}
-	if *table == RESERVED {
+	if strings.Contains(*table, RESERVED) {
 		return fmt.Errorf("Sorry, %s is a reserved name.", *table)
 	}
 	return
@@ -303,7 +303,7 @@ func (s *Store) ListTables(filters ...string) (cList []string, err error) {
 				return nil, err
 			}
 
-			if table != RESERVED {
+			if !strings.Contains(table, RESERVED) {
 				cList = append(cList, table)
 			}
 		}

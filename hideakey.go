@@ -81,10 +81,6 @@ func Unlock(filepath, passphrase string) (err error) {
 
 // Sets and randomizes keys in Store table for Store encryption key.
 func (s *Store) dblocker(passphrase, key, padlock []byte) []byte {
-
-	// Truncate Existing Stor if one exists.
-	s.Truncate("KVLite")
-
 	// Set passphrase and/or key to random if not specified.
 	if passphrase == nil {
 		passphrase = hashBytes(randBytes(256))
@@ -150,7 +146,7 @@ func (s *Store) dblocker(passphrase, key, padlock []byte) []byte {
 	}
 
 	for i, v := range lock {
-		s.set("KVLite", "X"+strconv.Itoa(i), v, _reserved)
+		s.set("KVLite_Staging", "X"+strconv.Itoa(i), v, _reserved)
 	}
 
 	randKey := hashBytes(randBytes(256))
@@ -178,19 +174,33 @@ func (s *Store) dblocker(passphrase, key, padlock []byte) []byte {
 	encryptedKey3 = scram(encryptedKey3)
 
 	// Store verifcation message which is the key encrypted with the key.
-	s.set("KVLite", "X"+strconv.Itoa(xSlots), encryptedKey3, _reserved)
-	s.set("KVLite", "X"+strconv.Itoa(xSlots+1), encryptedKey2, _reserved)
-	s.set("KVLite", "X"+strconv.Itoa(xSlots+2), encryptedKey1, _reserved)
+	s.set("KVLite_Staging", "X"+strconv.Itoa(xSlots), encryptedKey3, _reserved)
+	s.set("KVLite_Staging", "X"+strconv.Itoa(xSlots+1), encryptedKey2, _reserved)
+	s.set("KVLite_Staging", "X"+strconv.Itoa(xSlots+2), encryptedKey1, _reserved)
 
 	if padlock != nil {
-		s.set("KVLite", "X"+strconv.Itoa(xSlots+3), randBytes(slotSize), _reserved)
+		s.set("KVLite_Staging", "X"+strconv.Itoa(xSlots+3), randBytes(slotSize), _reserved)
 	}
 
+	s.dbCon.Exec("DROP TABLE KVLite")
+	if _, err := s.dbCon.Exec("ALTER TABLE KVLite_Staging RENAME TO KVLite"); err == nil { s.dbCon.Exec("DROP TABLE KVLite_Staging") }
 	return key[0:32]
 }
 
 // Extracts encryption key from Store table.
 func (s *Store) dbunlocker(padlock []byte) (err error) {
+
+	// Run this to clean up a failed shutdown last time.
+	c, err := s.CountKeys("KVLite")
+	if err != nil { return err }
+	if c == 0 {
+		c, err := s.CountKeys("KVLite_Staging")
+		if err != nil {return err}
+		if c != 0 {
+			s.dbCon.Exec("DROP TABLE KVLite")
+			if _, err := s.dbCon.Exec("ALTER TABLE KVLite_Staging RENAME TO KVLite"); err == nil { s.dbCon.Exec("DROP TABLE KVLite_Staging") }	
+		}
+	}
 
 	slots, err := s.ListKeys("KVLite", "X%%")
 	sort.Stable(sort.StringSlice(slots))
