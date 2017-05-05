@@ -109,9 +109,9 @@ func (s *Store) set(table string, key interface{}, val interface{}, flags int) (
 
 	switch key.(type) {
 		case int:
-			new_table = "key int PRIMARY KEY, value BLOB, e int"
+			new_table = "key INT PRIMARY KEY, value BLOB, e INT"
 		default:
-			new_table = "key TEXT PRIMARY KEY, value BLOB, e int"
+			new_table = "key TEXT PRIMARY KEY, value BLOB, e INT"
 	}
 
 	key_str := fmt.Sprintf("%v", key)
