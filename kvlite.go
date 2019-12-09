@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type Store struct {
@@ -472,9 +473,11 @@ func Open(filePath string, padlock ...[]byte) (*Store, error) {
 	}
 }
 
+var mem_cache_num int32
+
 // Open Memory-Only Database with random key.
 func MemStore() (*Store, error) {
-	return FastOpen(":memory:", NONE)
+	return FastOpen(fmt.Sprintf("file::memstore_%d:?mode=memory&cache=shared", atomic.AddInt32(&mem_cache_num, 1)), NONE)
 }
 
 // Open Database without auto-generated encryption key, instead specify key, if no key specific will be random.
